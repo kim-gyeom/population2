@@ -1,103 +1,73 @@
 import streamlit as st
-import pyrebase
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
-import time
 
-# ---------------------
-# Firebase 설정
-# ---------------------
-firebase_config = {
-    "apiKey": "AIzaSyCswFmrOGU3FyLYxwbNPTp7hvQxLfTPIZw",
-    "authDomain": "sw-projects-49798.firebaseapp.com",
-    "databaseURL": "https://sw-projects-49798-default-rtdb.firebaseio.com",
-    "projectId": "sw-projects-49798",
-    "storageBucket": "sw-projects-49798.appspot.com",
-    "messagingSenderId": "812186368395",
-    "appId": "1:812186368395:web:be2f7291ce54396209d78e"
-}
+st.set_page_config(layout="wide")
+st.title("📊 지역별 인구 분석 대시보드")
 
-firebase = pyrebase.initialize_app(firebase_config)
-auth = firebase.auth()
-db = firebase.database()
-storage = firebase.storage()
+# 데이터 업로드
+@st.cache_data
+def load_data(uploaded_file):
+    df = pd.read_csv(uploaded_file)
+    df.replace("-", 0, inplace=True)
+    for col in df.columns[2:]:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
 
-# ---------------------
-# 세션 상태 초기화
-# ---------------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.user_email = ""
-    st.session_state.id_token = ""
+uploaded_file = st.file_uploader("📎 CSV 파일을 업로드하세요", type="csv")
+if uploaded_file:
+    df = load_data(uploaded_file)
+    
+    st.subheader("🔍 데이터 미리보기")
+    st.dataframe(df.head())
 
-# ---------------------
-# 로그인 함수
-# ---------------------
-def login_page():
-    st.header("🔐 로그인")
-    email = st.text_input("이메일")
-    password = st.text_input("비밀번호", type="password")
-    if st.button("로그인"):
-        try:
-            user = auth.sign_in_with_email_and_password(email, password)
-            st.session_state.logged_in = True
-            st.session_state.user_email = email
-            st.session_state.id_token = user['idToken']
-            st.success("로그인 성공!")
-            st.experimental_rerun()
-        except:
-            st.error("로그인 실패. 이메일과 비밀번호를 확인하세요.")
+    tabs = st.tabs(["연도별 추이", "지역별 분석", "변화량 분석", "누적 시각화"])
 
-# ---------------------
-# 로그아웃 함수
-# ---------------------
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.user_email = ""
-    st.session_state.id_token = ""
-    st.success("로그아웃 되었습니다.")
-    time.sleep(1)
-    st.experimental_rerun()
+    # 연도별 추이
+    with tabs[0]:
+        st.header("📆 연도별 인구 추이")
+        region = st.selectbox("지역 선택", df["지역"].unique())
+        age = st.selectbox("연령대 선택", df["연령대"].unique())
+        row = df[(df["지역"] == region) & (df["연령대"] == age)].iloc[0]
+        years = df.columns[2:]
+        values = row[2:].values
 
-# ---------------------
-# EDA 기능 함수
-# ---------------------
-def eda_page():
-    st.title("📊 Bike Sharing Demand EDA")
-    uploaded = st.file_uploader("train.csv 파일 업로드", type="csv")
-    if uploaded is None:
-        st.info("CSV 파일을 업로드하세요.")
-        return
+        fig, ax = plt.subplots()
+        ax.plot(years, values, marker='o')
+        ax.set_title(f"{region} - {age} 인구 추이")
+        ax.set_ylabel("인구 수")
+        ax.set_xlabel("연도")
+        st.pyplot(fig)
 
-    df = pd.read_csv(uploaded, parse_dates=['datetime'])
-    st.subheader("기초 정보")
-    st.write(df.head())
+    # 지역별 분석
+    with tabs[1]:
+        st.header("📍 지역별 인구 비교")
+        year = st.selectbox("연도 선택", df.columns[2:], key="연도선택")
+        age_group = st.selectbox("연령대 선택", df["연령대"].unique(), key="연령선택")
+        filtered = df[df["연령대"] == age_group][["지역", year]]
+        sorted_df = filtered.sort_values(by=year, ascending=False)
 
-    st.subheader("시간대별 평균 대여량")
-    df['hour'] = df['datetime'].dt.hour
-    fig, ax = plt.subplots()
-    sns.pointplot(x='hour', y='count', data=df, ax=ax)
-    st.pyplot(fig)
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.barplot(data=sorted_df, x=year, y="지역", ax=ax)
+        st.pyplot(fig)
 
-    st.subheader("상관관계 분석")
-    corr = df[['temp', 'atemp', 'humidity', 'windspeed', 'count']].corr()
-    fig2, ax2 = plt.subplots()
-    sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax2)
-    st.pyplot(fig2)
+    # 변화량 분석
+    with tabs[2]:
+        st.header("📊 2015 → 2022 변화량")
+        df["변화량"] = df["2022"] - df["2015"]
+        change_df = df[df["연령대"] == "전체"][["지역", "변화량"]].sort_values(by="변화량", ascending=False)
 
-# ---------------------
-# 메인 앱 실행
-# ---------------------
-st.title("🚲 자전거 대여 분석 웹앱")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.barplot(data=change_df, x="변화량", y="지역", ax=ax)
+        st.pyplot(fig)
 
-if st.session_state.logged_in:
-    st.sidebar.write(f"**로그인됨:** {st.session_state.user_email}")
-    if st.sidebar.button("로그아웃"):
-        logout()
-    page = st.sidebar.radio("페이지 선택", ["EDA 분석"])
-    if page == "EDA 분석":
-        eda_page()
-else:
-    login_page()
+    # 누적 시각화
+    with tabs[3]:
+        st.header("🎨 연령대별 누적 막대그래프")
+        year = st.selectbox("연도 선택", df.columns[2:], key="누적연도")
+        pivot = df.pivot(index="지역", columns="연령대", values=year).fillna(0)
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+        pivot.plot(kind="bar", stacked=True, ax=ax)
+        st.pyplot(fig)

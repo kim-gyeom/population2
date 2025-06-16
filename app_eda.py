@@ -7,7 +7,7 @@ st.set_page_config(layout="wide")
 st.title("📊 지역별 인구 분석 대시보드")
 
 # 데이터 업로드
-@st.cache_data
+# @st.cache_data  # 캐시 잠시 해제
 def load_data(uploaded_file):
     df = pd.read_csv(uploaded_file)
     df.replace("-", 0, inplace=True)
@@ -29,16 +29,20 @@ if uploaded_file:
         st.header("📆 연도별 인구 추이")
         region = st.selectbox("지역 선택", df["지역"].unique())
         age = st.selectbox("연령대 선택", df["연령대"].unique())
-        row = df[(df["지역"] == region) & (df["연령대"] == age)].iloc[0]
-        years = df.columns[2:]
-        values = row[2:].values
+        filtered_rows = df[(df["지역"] == region) & (df["연령대"] == age)]
+        if not filtered_rows.empty:
+            row = filtered_rows.iloc[0]
+            years = df.columns[2:]
+            values = row[2:].values
 
-        fig, ax = plt.subplots()
-        ax.plot(years, values, marker='o')
-        ax.set_title(f"{region} - {age} 인구 추이")
-        ax.set_ylabel("인구 수")
-        ax.set_xlabel("연도")
-        st.pyplot(fig)
+            fig, ax = plt.subplots()
+            ax.plot(years, values, marker='o')
+            ax.set_title(f"{region} - {age} 인구 추이")
+            ax.set_ylabel("인구 수")
+            ax.set_xlabel("연도")
+            st.pyplot(fig=fig)
+        else:
+            st.warning("선택한 조건에 맞는 데이터가 없습니다.")
 
     # 지역별 분석
     with tabs[1]:
@@ -50,17 +54,18 @@ if uploaded_file:
 
         fig, ax = plt.subplots(figsize=(10, 6))
         sns.barplot(data=sorted_df, x=year, y="지역", ax=ax)
-        st.pyplot(fig)
+        st.pyplot(fig=fig)
 
     # 변화량 분석
     with tabs[2]:
         st.header("📊 2015 → 2022 변화량")
-        df["변화량"] = df["2022"] - df["2015"]
+        if "변화량" not in df.columns:
+            df["변화량"] = df["2022"] - df["2015"]
         change_df = df[df["연령대"] == "전체"][["지역", "변화량"]].sort_values(by="변화량", ascending=False)
 
         fig, ax = plt.subplots(figsize=(10, 6))
         sns.barplot(data=change_df, x="변화량", y="지역", ax=ax)
-        st.pyplot(fig)
+        st.pyplot(fig=fig)
 
     # 누적 시각화
     with tabs[3]:
@@ -70,4 +75,4 @@ if uploaded_file:
 
         fig, ax = plt.subplots(figsize=(12, 6))
         pivot.plot(kind="bar", stacked=True, ax=ax)
-        st.pyplot(fig)
+        st.pyplot(fig=fig)

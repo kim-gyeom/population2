@@ -3,3 +3,4 @@ pandas
 matplotlib
 seaborn
 pyrebase4
+gcloud
